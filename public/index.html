@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Camera Provenance System</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔒 Secure Camera Provenance System</h1>
+            <div class="status-bar">
+                <div id="system-status" class="status-indicator">
+                    <span class="status-dot"></span>
+                    System Status: <span id="status-text">Connecting...</span>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <div class="dashboard">
+                <!-- Hardware Status Panel -->
+                <div class="panel">
+                    <h2>📟 Hardware Status</h2>
+                    <div id="hardware-status">
+                        <div class="hardware-item">
+                            <span class="hw-name">LIS3DH Accelerometer:</span>
+                            <span id="accel-status" class="hw-status">Unknown</span>
+                        </div>
+                        <div class="hardware-item">
+                            <span class="hw-name">USB Camera:</span>
+                            <span id="camera-status" class="hw-status">Unknown</span>
+                        </div>
+                        <div class="hardware-item">
+                            <span class="hw-name">ATECC608 Crypto:</span>
+                            <span id="crypto-status" class="hw-status">Unknown</span>
+                        </div>
+                        <div class="hardware-item">
+                            <span class="hw-name">DS3231 RTC:</span>
+                            <span id="rtc-status" class="hw-status">Unknown</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live Feed Panel -->
+                <div class="panel">
+                    <h2>📷 Live Camera Feed</h2>
+                    <div class="camera-container">
+                        <div id="latest-image">
+                            <div class="placeholder">Waiting for motion detection...</div>
+                        </div>
+                        <button id="manual-capture" class="btn btn-primary">Manual Capture</button>
+                    </div>
+                </div>
+
+                <!-- Provenance Statistics -->
+                <div class="panel">
+                    <h2>🔐 Provenance Statistics</h2>
+                    <div id="provenance-stats">
+                        <div class="stat-item">
+                            <span class="stat-label">Total Events:</span>
+                            <span id="total-events" class="stat-value">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Signed Events:</span>
+                            <span id="signed-events" class="stat-value">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Chain Integrity:</span>
+                            <span id="chain-status" class="stat-value">Unknown</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Signature Rate:</span>
+                            <span id="signature-rate" class="stat-value">0%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Event Comparison Demo -->
+            <div class="panel comparison-panel">
+                <h2>🔍 Signed vs Unsigned Data Comparison</h2>
+                <div class="comparison-container">
+                    <div class="comparison-side">
+                        <h3 class="signed">✅ Signed Data</h3>
+                        <div id="signed-example" class="data-example">
+                            <div class="signature-info">
+                                <strong>Cryptographic Signature:</strong>
+                                <code class="signature-hash">Loading...</code>
+                            </div>
+                            <div class="verification-status verified">
+                                🔒 Cryptographically Verified
+                            </div>
+                            <div class="integrity-check">
+                                ✓ Data integrity guaranteed<br>
+                                ✓ Timestamp authenticity verified<br>
+                                ✓ Chain of custody maintained
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="comparison-side">
+                        <h3 class="unsigned">❌ Unsigned Data</h3>
+                        <div id="unsigned-example" class="data-example">
+                            <div class="signature-info">
+                                <strong>No Signature:</strong>
+                                <code class="no-signature">No cryptographic protection</code>
+                            </div>
+                            <div class="verification-status unverified">
+                                🔓 Cannot Verify Authenticity
+                            </div>
+                            <div class="integrity-check">
+                                ❌ Data may be tampered<br>
+                                ❌ Timestamp questionable<br>
+                                ❌ No chain of custody
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Event Log -->
+            <div class="panel">
+                <h2>📋 Event Log</h2>
+                <div class="controls">
+                    <button id="refresh-events" class="btn btn-secondary">Refresh</button>
+                    <button id="verify-all" class="btn btn-warning">Verify All</button>
+                </div>
+                <div id="event-log">
+                    <div class="loading">Loading events...</div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
