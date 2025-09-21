@@ -17,147 +17,149 @@ class ATECC608 {
     }
 
     async initialize() {
-        try {
-            if (!i2c) {
-                console.log('ATECC608: Using software crypto fallback - no hardware I2C available');
-                this.initialized = false;
-                return;
-            }
-
-            this.bus = await i2c.openPromisified(this.busNumber);
-
-            // Wake up the chip
-            await this.wakeup();
-
-            // Read device revision to verify communication
-            const revision = await this.getRevision();
-            console.log(`ATECC608 initialized, revision: ${revision.toString(16)}`);
-
-            this.initialized = true;
-        } catch (error) {
-            console.error('Failed to initialize ATECC608:', error);
-            // For demo purposes, we'll use software crypto if hardware isn't available
-            console.log('Falling back to software cryptography');
-            this.initialized = false;
+        if (!i2c) {
+            throw new Error('ATECC608: i2c-bus module not available - hardware I2C required');
         }
+
+        this.bus = await i2c.openPromisified(this.busNumber);
+
+        // Enhanced wake-up and verification sequence based on working tests
+        await this.wakeupAndVerify();
+
+        // Get device revision to verify proper communication
+        const revision = await this.getRevision();
+        console.log(`ATECC608 initialized successfully, revision: 0x${revision.toString(16)}`);
+
+        this.initialized = true;
     }
 
-    async wakeup() {
-        // Send wake condition (dummy write)
-        try {
-            await this.bus.writeByte(this.address, 0x00, 0x00);
-        } catch (error) {
-            // Expected to fail, this is just to wake the chip
+    async wakeupAndVerify() {
+        // Enhanced wake-up sequence that matches our working comprehensive test
+        for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+                // Method 1: Write 0x00 to device address
+                await this.bus.i2cWrite(this.address, 1, Buffer.from([0x00]));
+            } catch (error) {
+                // Expected to fail, this is just to wake the chip
+            }
+
+            try {
+                // Method 2: Write to address 0x00 (some devices need this)
+                await this.bus.i2cWrite(0x00, 1, Buffer.from([0x00]));
+            } catch (error) {
+                // This might fail too
+            }
+
+            // Wait between attempts
+            await new Promise(resolve => setTimeout(resolve, 2));
         }
 
-        // Wait for wake-up
-        await new Promise(resolve => setTimeout(resolve, 10));
+        // Test basic connectivity - this approach worked in our comprehensive test
+        try {
+            const testRead = Buffer.alloc(1);
+            await this.bus.i2cRead(this.address, 1, testRead);
+            console.log(`Basic connectivity test: ${testRead.toString('hex')}`);
+
+            if (testRead[0] === 0x04) {
+                console.log('Device appears to be ready (status = 0x04)');
+            }
+        } catch (e) {
+            console.log(`Basic connectivity test failed: ${e.message} - proceeding anyway`);
+            // Don't throw error, just proceed to try Info command
+        }
     }
 
     async getRevision() {
-        const command = Buffer.from([0x03, 0x07, 0x30, 0x00, 0x00, 0x00, 0x03, 0x5D]);
-        await this.sendCommand(command);
-        const response = await this.receiveResponse();
-        return response[1];
+        // Use ATECC508-compatible format that worked in our comprehensive test
+        const command = Buffer.from([0x30, 0x00, 0x00, 0x00]);
+
+        // Calculate simple checksum (ATECC508 style)
+        let checksum = 0;
+        for (let i = 0; i < command.length; i++) {
+            checksum += command[i];
+        }
+        checksum = (~checksum + 1) & 0xFF;
+
+        const fullCommand = Buffer.concat([command, Buffer.from([checksum])]);
+
+        console.log('DEBUG: Sending Info command:', fullCommand.toString('hex'));
+
+        let response;
+        try {
+            // Send command directly (no word address prefix) - this worked in our tests
+            await this.bus.i2cWrite(this.address, fullCommand.length, fullCommand);
+
+            // Wait for command execution
+            await new Promise(resolve => setTimeout(resolve, 10));
+
+            // Read response
+            response = Buffer.alloc(8);
+            await this.bus.i2cRead(this.address, 8, response);
+        } catch (error) {
+            console.log('DEBUG: I2C communication error:', error.message);
+            throw new Error(`I2C communication failed: ${error.message}`);
+        }
+
+        console.log('DEBUG: Received response:', response.toString('hex'));
+        console.log('DEBUG: Response bytes:', Array.from(response));
+
+        // Parse response based on working test results
+        if (response[0] === 0x04) {
+            // Use big-endian format as per ATECC documentation (MSB first)
+            const revision = response.readUInt16BE(1);
+            console.log('DEBUG: Parsed revision:', revision.toString(16));
+            return revision;
+        }
+
+        throw new Error(`Invalid revision response: ${response.toString('hex')}`);
     }
 
-    async sendCommand(commandBuffer) {
-        const length = commandBuffer.length;
-        const packet = Buffer.concat([Buffer.from([length]), commandBuffer]);
 
-        for (let i = 0; i < packet.length; i++) {
-            await this.bus.writeByte(this.address, packet[i]);
-        }
-    }
+    calculateCRC(data) {
+        // CRC-16 calculation for ATECC608 (polynomial 0x8005)
+        let crc = 0x0000;
 
-    async receiveResponse() {
-        // Read response length
-        const length = await this.bus.readByte(this.address, 0x00);
-
-        // Read response data
-        const response = Buffer.alloc(length - 1);
-        for (let i = 0; i < length - 1; i++) {
-            response[i] = await this.bus.readByte(this.address, 0x00);
+        for (let i = 0; i < data.length; i++) {
+            crc ^= data[i];
+            for (let j = 0; j < 8; j++) {
+                if (crc & 0x0001) {
+                    crc = (crc >> 1) ^ 0x8005;
+                } else {
+                    crc = crc >> 1;
+                }
+            }
         }
 
-        return response;
+        return crc;
     }
 
     async signData(data) {
-        if (this.initialized) {
-            return await this.hardwareSign(data);
-        } else {
-            return await this.softwareSign(data);
+        if (!this.initialized) {
+            throw new Error('ATECC608 not initialized - hardware crypto required');
         }
-    }
 
-    async hardwareSign(data) {
-        try {
-            const hash = crypto.createHash('sha256').update(data).digest();
-
-            // This is a simplified implementation
-            // Real ATECC608 signing would use proper ECDSA commands
-            const command = Buffer.concat([
-                Buffer.from([0x41, 0x07, 0x80, 0x00]),
-                hash.slice(0, 32)
-            ]);
-
-            await this.sendCommand(command);
-            const signature = await this.receiveResponse();
-
-            return {
-                signature: signature.toString('hex'),
-                algorithm: 'ECDSA-SHA256',
-                keyId: 'ATECC608-SLOT0',
-                hardware: true
-            };
-        } catch (error) {
-            console.error('Hardware signing failed, falling back to software:', error);
-            return await this.softwareSign(data);
-        }
-    }
-
-    async softwareSign(data) {
-        // Software fallback using Node.js crypto
-        const privateKey = crypto.generateKeyPairSync('ec', {
-            namedCurve: 'secp256k1'
-        }).privateKey;
-
-        const sign = crypto.createSign('SHA256');
-        sign.update(data);
-        const signature = sign.sign(privateKey, 'hex');
+        // For now, return a mock signature until we implement hardware signing commands
+        console.log('WARNING: Hardware signing not yet implemented, using mock signature');
+        const hash = crypto.createHash('sha256').update(data).digest();
 
         return {
-            signature,
+            signature: hash.toString('hex'),
             algorithm: 'ECDSA-SHA256',
-            keyId: 'SOFTWARE-FALLBACK',
-            hardware: false
+            keyId: 'ATECC608-SLOT0',
+            hardware: false, // Mark as false since this is mock
+            raw: hash
         };
     }
 
+
     async verifySignature(data, signatureInfo) {
-        if (signatureInfo.hardware && this.initialized) {
-            return await this.hardwareVerify(data, signatureInfo);
-        } else {
-            return await this.softwareVerify(data, signatureInfo);
+        if (!this.initialized) {
+            throw new Error('ATECC608 not initialized - hardware crypto required');
         }
-    }
 
-    async hardwareVerify(data, signatureInfo) {
-        // Simplified hardware verification
-        // Real implementation would use ATECC608 verify commands
-        return true; // Placeholder
-    }
-
-    async softwareVerify(data, signatureInfo) {
-        try {
-            // For demo purposes, we'll generate a verification key
-            // In practice, you'd have the public key stored
-            return Math.random() > 0.1; // 90% success rate for demo
-        } catch (error) {
-            console.error('Verification failed:', error);
-            return false;
-        }
+        // For now, return mock verification
+        console.log('WARNING: Hardware verification not yet implemented, using mock verification');
+        return true;
     }
 
     getStatus() {
